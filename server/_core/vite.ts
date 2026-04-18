@@ -13,15 +13,29 @@ export async function setupVite(app: Express, server: Server) {
     allowedHosts: true as const,
   };
 
-  const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
-    server: serverOptions,
-    appType: "custom",
-  });
+  let vite;
+  try {
+    vite = await createViteServer({
+      ...viteConfig,
+      configFile: false,
+      server: serverOptions,
+      appType: "custom",
+    });
+    console.log("[Vite] Server created successfully");
+  } catch (error) {
+    console.error("[Vite] Failed to create server:", error);
+    throw error;
+  }
 
   app.use(vite.middlewares);
+  
+  // Catch-all for SPA routing - but skip API routes
   app.use("*", async (req, res, next) => {
+    // Skip API routes, let them pass through
+    if (req.path.startsWith("/api/") || req.path.startsWith("/manus-storage/")) {
+      return next();
+    }
+    
     const url = req.originalUrl;
 
     try {
