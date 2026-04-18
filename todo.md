@@ -15,11 +15,11 @@
 - [x] Implement logout functionality (pre-configured in template)
 
 ## Landing Page
-- [ ] Create hero section with premium design (gold/navy/ivory)
-- [ ] Create investment plans section (4 plans with ROI, duration, features)
-- [ ] Create investment categories section (Solana, Agricultural, Car Stocks)
-- [ ] Create features/benefits section
-- [ ] Create call-to-action buttons
+- [x] Create hero section with premium design (gold/navy/ivory)
+- [x] Create investment plans section (4 plans with ROI, duration, features)
+- [x] Create investment categories section (Solana, Agricultural, Car Stocks)
+- [x] Create features/benefits section
+- [x] Create call-to-action buttons
 
 ## User Dashboard
 - [ ] Create dashboard layout with sidebar navigation
@@ -38,10 +38,10 @@
 - [ ] Create order/investment record creation
 
 ## Multi-Language Support
-- [ ] Setup i18n library (react-i18next or similar)
-- [ ] Create translation files for all 5 languages (EN, FR, ES, PT, AR)
-- [ ] Create language switcher component in navbar
-- [ ] Translate all UI text and content
+- [x] Setup i18n library (react-i18next or similar)
+- [x] Create translation files for all 5 languages (EN, FR, ES, PT, AR)
+- [x] Create language switcher component in navbar
+- [x] Translate all UI text and content
 
 ## Stripe Integration
 - [ ] Setup Stripe API keys and environment variables
