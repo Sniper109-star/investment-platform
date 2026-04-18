@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, InsertUserInvestment, InsertWithdrawalRequest, investmentPlans, investmentCategories, userInvestments, withdrawalRequests } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,83 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Investment Plans
+export async function getInvestmentPlans() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(investmentPlans).where(eq(investmentPlans.isActive, true)).orderBy(investmentPlans.displayOrder);
+}
+
+export async function getInvestmentPlanById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(investmentPlans).where(eq(investmentPlans.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Investment Categories
+export async function getInvestmentCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(investmentCategories).where(eq(investmentCategories.isActive, true)).orderBy(investmentCategories.displayOrder);
+}
+
+export async function getInvestmentCategoryById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(investmentCategories).where(eq(investmentCategories.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// User Investments
+export async function getUserInvestments(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(userInvestments).where(eq(userInvestments.userId, userId)).orderBy(userInvestments.createdAt);
+}
+
+export async function createUserInvestment(investment: InsertUserInvestment) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(userInvestments).values(investment);
+  return result;
+}
+
+export async function updateUserInvestmentStatus(id: number, status: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(userInvestments).set({ status: status as any }).where(eq(userInvestments.id, id));
+}
+
+// Withdrawal Requests
+export async function createWithdrawalRequest(request: InsertWithdrawalRequest) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(withdrawalRequests).values(request);
+}
+
+export async function getUserWithdrawalRequests(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(withdrawalRequests).where(eq(withdrawalRequests.userId, userId));
+}
+
+export async function getPendingWithdrawalRequests() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(withdrawalRequests).where(eq(withdrawalRequests.status, "pending"));
+}
+
+export async function approveWithdrawalRequest(id: number, adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(withdrawalRequests).set({ status: "approved", approvedBy: adminId, approvalDate: new Date() }).where(eq(withdrawalRequests.id, id));
+}
+
+export async function rejectWithdrawalRequest(id: number, reason: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(withdrawalRequests).set({ status: "rejected", rejectionReason: reason }).where(eq(withdrawalRequests.id, id));
+}
+
+
