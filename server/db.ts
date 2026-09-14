@@ -87,3 +87,46 @@ export async function approveWithdrawalRequest(id: number, adminId: number) {
 export async function rejectWithdrawalRequest(id: number, reason: string) {
   return unwrap(await getDb().from("withdrawal_requests").update({ status: "rejected", rejectionReason: reason }).eq("id", id).eq("status", "pending").select().single());
 }
+
+export async function getAdminStats() {
+  const db = getDb();
+  const [users, investments, withdrawals, plans] = await Promise.all([
+    db.from("users").select("id, role, createdAt", { count: "exact" }),
+    db.from("user_investments").select("amount, expectedReturn, status"),
+    db.from("withdrawal_requests").select("id, amount, status, createdAt, userId").order("createdAt", { ascending: false }),
+    db.from("investment_plans").select("id, name, isActive").order("displayOrder"),
+  ]);
+  const userRows = unwrap(users);
+  const investmentRows = unwrap(investments) ?? [];
+  const withdrawalRows = unwrap(withdrawals) ?? [];
+  return {
+    totalUsers: users.count ?? userRows?.length ?? 0,
+    totalInvested: investmentRows.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+    totalExpectedReturn: investmentRows.reduce((sum, item) => sum + Number(item.expectedReturn ?? 0), 0),
+    activeInvestments: investmentRows.filter(item => item.status === "active").length,
+    pendingWithdrawals: withdrawalRows.filter(item => item.status === "pending").length,
+    withdrawals: withdrawalRows,
+    plans: unwrap(plans) ?? [],
+  };
+}
+
+export async function getAdminUsers() {
+  return unwrap(await getDb().from("users").select("id, openId, name, email, role, totalInvested, totalEarnings, createdAt, lastSignedIn").order("createdAt", { ascending: false }));
+}
+
+export async function getAdminInvestments() {
+  return unwrap(await getDb().from("user_investments").select("*, users(name, email), investment_plans(name), investment_categories(name)").order("createdAt", { ascending: false }));
+}
+
+export async function updateInvestmentStatus(id: number, status: "pending" | "active" | "completed" | "withdrawn") {
+  const values = status === "active" ? { status, startDate: new Date().toISOString() } : { status };
+  return unwrap(await getDb().from("user_investments").update(values).eq("id", id).select().single());
+}
+
+export async function getAdminLogs() {
+  return unwrap(await getDb().from("admin_logs").select("*, users(name, email)").order("createdAt", { ascending: false }).limit(100));
+}
+
+export async function createAdminLog(log: { adminId: number; action: string; targetUserId?: number; targetInvestmentId?: number; details?: string }) {
+  return unwrap(await getDb().from("admin_logs").insert(log).select().single());
+}
