@@ -1,171 +1,89 @@
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, InsertUserInvestment, InsertWithdrawalRequest, investmentPlans, investmentCategories, userInvestments, withdrawalRequests } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type {
+  InsertUser,
+  InsertUserInvestment,
+  InsertWithdrawalRequest,
+} from "../drizzle/schema";
+import type { User } from "../drizzle/schema";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+let client: SupabaseClient | null = null;
+
+export function getDb(): SupabaseClient {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
-  return _db;
+  client ??= createClient(supabaseUrl, supabaseKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return client;
+}
+
+function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
+  if (result.error) throw new Error(result.error.message);
+  return result.data as T;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
+  if (!user.openId) throw new Error("User openId is required for upsert");
+  const values = {
+    openId: user.openId,
+    name: user.name ?? null,
+    email: user.email ?? null,
+    loginMethod: user.loginMethod ?? null,
+    role: user.role ?? (user.openId === process.env.OWNER_OPEN_ID ? "admin" : "user"),
+    lastSignedIn: user.lastSignedIn?.toISOString() ?? new Date().toISOString(),
+  };
+  unwrap(await getDb().from("users").upsert(values, { onConflict: "openId" }));
 }
 
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
+export async function getUserByOpenId(openId: string): Promise<User | undefined> {
+  const result = unwrap(await getDb().from("users").select("*").eq("openId", openId).maybeSingle());
+  return result ?? undefined;
 }
 
-// Investment Plans
 export async function getInvestmentPlans() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(investmentPlans).where(eq(investmentPlans.isActive, true)).orderBy(investmentPlans.displayOrder);
+  return unwrap(await getDb().from("investment_plans").select("*").eq("isActive", true).order("displayOrder"));
 }
 
 export async function getInvestmentPlanById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(investmentPlans).where(eq(investmentPlans.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return unwrap(await getDb().from("investment_plans").select("*").eq("id", id).maybeSingle());
 }
 
-// Investment Categories
 export async function getInvestmentCategories() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(investmentCategories).where(eq(investmentCategories.isActive, true)).orderBy(investmentCategories.displayOrder);
+  return unwrap(await getDb().from("investment_categories").select("*").eq("isActive", true).order("displayOrder"));
 }
 
 export async function getInvestmentCategoryById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(investmentCategories).where(eq(investmentCategories.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return unwrap(await getDb().from("investment_categories").select("*").eq("id", id).maybeSingle());
 }
 
-// User Investments
 export async function getUserInvestments(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(userInvestments).where(eq(userInvestments.userId, userId)).orderBy(userInvestments.createdAt);
+  return unwrap(await getDb().from("user_investments").select("*").eq("userId", userId).order("createdAt", { ascending: false }));
 }
 
 export async function createUserInvestment(investment: InsertUserInvestment) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(userInvestments).values(investment);
-  return result;
+  return unwrap(await getDb().from("user_investments").insert(investment).select().single());
 }
 
-export async function updateUserInvestmentStatus(id: number, status: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(userInvestments).set({ status: status as any }).where(eq(userInvestments.id, id));
-}
-
-// Withdrawal Requests
 export async function createWithdrawalRequest(request: InsertWithdrawalRequest) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.insert(withdrawalRequests).values(request);
+  return unwrap(await getDb().from("withdrawal_requests").insert(request).select().single());
 }
 
 export async function getUserWithdrawalRequests(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(withdrawalRequests).where(eq(withdrawalRequests.userId, userId));
+  return unwrap(await getDb().from("withdrawal_requests").select("*").eq("userId", userId).order("createdAt", { ascending: false }));
 }
 
 export async function getPendingWithdrawalRequests() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(withdrawalRequests).where(eq(withdrawalRequests.status, "pending"));
+  return unwrap(await getDb().from("withdrawal_requests").select("*").eq("status", "pending").order("createdAt"));
 }
 
 export async function approveWithdrawalRequest(id: number, adminId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(withdrawalRequests).set({ status: "approved", approvedBy: adminId, approvalDate: new Date() }).where(eq(withdrawalRequests.id, id));
+  return unwrap(await getDb().from("withdrawal_requests").update({ status: "approved", approvedBy: adminId, approvalDate: new Date().toISOString() }).eq("id", id).eq("status", "pending").select().single());
 }
 
 export async function rejectWithdrawalRequest(id: number, reason: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.update(withdrawalRequests).set({ status: "rejected", rejectionReason: reason }).where(eq(withdrawalRequests.id, id));
+  return unwrap(await getDb().from("withdrawal_requests").update({ status: "rejected", rejectionReason: reason }).eq("id", id).eq("status", "pending").select().single());
 }
-
-
