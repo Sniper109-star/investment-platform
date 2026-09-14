@@ -5,6 +5,8 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { z } from "zod";
 
+const DEMO_USER_ID = 1;
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -32,8 +34,8 @@ export const appRouter = router({
   
   // User Investments
   investments: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserInvestments(ctx.user.id)),
-    create: protectedProcedure
+    list: publicProcedure.query(() => db.getUserInvestments(DEMO_USER_ID)),
+    create: publicProcedure
       .input(z.object({
         planId: z.number(),
         categoryId: z.number(),
@@ -41,7 +43,7 @@ export const appRouter = router({
             }))
       .mutation(({ ctx, input }) => {
         return db.createUserInvestment({
-          userId: ctx.user.id,
+          userId: DEMO_USER_ID,
           planId: input.planId,
           categoryId: input.categoryId,
           amount: input.amount as any,
@@ -52,15 +54,15 @@ export const appRouter = router({
   
   // Withdrawal Requests
   withdrawals: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserWithdrawalRequests(ctx.user.id)),
-    create: protectedProcedure
+    list: publicProcedure.query(() => db.getUserWithdrawalRequests(DEMO_USER_ID)),
+    create: publicProcedure
       .input(z.object({
         amount: z.string(),
         reason: z.string().optional(),
       }))
       .mutation(({ ctx, input }) => {
         return db.createWithdrawalRequest({
-          userId: ctx.user.id,
+          userId: DEMO_USER_ID,
           amount: input.amount as any,
           reason: input.reason,
           status: "pending",
