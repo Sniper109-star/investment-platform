@@ -51,8 +51,12 @@ async function startServer() {
     registerStorageProxy(app);
     console.log("[Server] Storage proxy registered");
     
-    registerOAuthRoutes(app);
-    console.log("[Server] OAuth routes registered");
+    if (process.env.OAUTH_SERVER_URL) {
+      registerOAuthRoutes(app);
+      console.log("[Server] OAuth routes registered");
+    } else {
+      console.log("[Server] OAuth routes disabled; authentication is not configured");
+    }
     
     // development mode uses Vite, production mode uses static files
     if (process.env.NODE_ENV === "development") {
