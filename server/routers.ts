@@ -38,16 +38,14 @@ export const appRouter = router({
         planId: z.number(),
         categoryId: z.number(),
         amount: z.string(),
-        expectedReturn: z.string(),
-      }))
+            }))
       .mutation(({ ctx, input }) => {
         return db.createUserInvestment({
           userId: ctx.user.id,
           planId: input.planId,
           categoryId: input.categoryId,
           amount: input.amount as any,
-          expectedReturn: input.expectedReturn as any,
-          status: "pending",
+                status: "pending",
         });
       }),
   }),
@@ -89,6 +87,33 @@ export const appRouter = router({
           throw new Error("Unauthorized: Admin access required");
         }
         return db.rejectWithdrawalRequest(input.id, input.reason);
+      }),
+  }),
+
+  admin: router({
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new Error("Unauthorized: Admin access required");
+      return db.getAdminStats();
+    }),
+    users: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new Error("Unauthorized: Admin access required");
+      return db.getAdminUsers();
+    }),
+    investments: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new Error("Unauthorized: Admin access required");
+      return db.getAdminInvestments();
+    }),
+    logs: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new Error("Unauthorized: Admin access required");
+      return db.getAdminLogs();
+    }),
+    updateInvestment: protectedProcedure
+      .input(z.object({ id: z.number(), status: z.enum(["pending", "active", "completed", "withdrawn"]) }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new Error("Unauthorized: Admin access required");
+        const result = await db.updateInvestmentStatus(input.id, input.status);
+        await db.createAdminLog({ adminId: ctx.user.id, action: `investment.${input.status}`, targetInvestmentId: input.id });
+        return result;
       }),
   }),
 });

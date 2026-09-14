@@ -64,12 +64,29 @@ export async function getUserInvestments(userId: number) {
   return unwrap(await getDb().from("user_investments").select("*").eq("userId", userId).order("createdAt", { ascending: false }));
 }
 
-export async function createUserInvestment(investment: InsertUserInvestment) {
-  return unwrap(await getDb().from("user_investments").insert(investment).select().single());
+export async function createUserInvestment(investment: Omit<InsertUserInvestment, "expectedReturn">) {
+  const plan = await getInvestmentPlanById(Number(investment.planId)) as any;
+  const category = await getInvestmentCategoryById(Number(investment.categoryId)) as any;
+  const amount = Number(investment.amount);
+  if (!plan || !plan.isActive) throw new Error("The selected investment plan is unavailable");
+  if (!category || !category.isActive) throw new Error("The selected investment category is unavailable");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Investment amount must be greater than zero");
+  if (amount < Number(plan.minAmount) || (plan.maxAmount && amount > Number(plan.maxAmount))) {
+    throw new Error(`Investment amount must be between $${Number(plan.minAmount).toLocaleString()} and ${plan.maxAmount ? `$${Number(plan.maxAmount).toLocaleString()}` : "the plan maximum"}`);
+  }
+  const expectedReturn = (amount * Number(plan.roi) / 100).toFixed(2);
+  return unwrap(await getDb().from("user_investments").insert({ ...investment, expectedReturn }).select().single());
 }
 
 export async function createWithdrawalRequest(request: InsertWithdrawalRequest) {
-  return unwrap(await getDb().from("withdrawal_requests").insert(request).select().single());
+  const amount = Number(request.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Withdrawal amount must be greater than zero");
+  const existing = await getUserWithdrawalRequests(Number(request.userId));
+  if (existing.some(item => item.status === "pending")) throw new Error("You already have a withdrawal request under review");
+  const investments = await getUserInvestments(Number(request.userId));
+  const available = investments.filter(item => item.status === "active" || item.status === "completed").reduce((sum, item) => sum + Number(item.actualReturn ?? item.expectedReturn ?? 0), 0);
+  if (amount > available) throw new Error("Withdrawal amount exceeds your available balance");
+  return unwrap(await getDb().from("withdrawal_requests").insert({ ...request, amount: amount.toFixed(2) }).select().single());
 }
 
 export async function getUserWithdrawalRequests(userId: number) {
@@ -86,4 +103,47 @@ export async function approveWithdrawalRequest(id: number, adminId: number) {
 
 export async function rejectWithdrawalRequest(id: number, reason: string) {
   return unwrap(await getDb().from("withdrawal_requests").update({ status: "rejected", rejectionReason: reason }).eq("id", id).eq("status", "pending").select().single());
+}
+
+export async function getAdminStats() {
+  const db = getDb();
+  const [users, investments, withdrawals, plans] = await Promise.all([
+    db.from("users").select("id, role, createdAt", { count: "exact" }),
+    db.from("user_investments").select("amount, expectedReturn, status"),
+    db.from("withdrawal_requests").select("id, amount, status, createdAt, userId").order("createdAt", { ascending: false }),
+    db.from("investment_plans").select("id, name, isActive").order("displayOrder"),
+  ]);
+  const userRows = unwrap(users);
+  const investmentRows = unwrap(investments) ?? [];
+  const withdrawalRows = unwrap(withdrawals) ?? [];
+  return {
+    totalUsers: users.count ?? userRows?.length ?? 0,
+    totalInvested: investmentRows.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+    totalExpectedReturn: investmentRows.reduce((sum, item) => sum + Number(item.expectedReturn ?? 0), 0),
+    activeInvestments: investmentRows.filter(item => item.status === "active").length,
+    pendingWithdrawals: withdrawalRows.filter(item => item.status === "pending").length,
+    withdrawals: withdrawalRows,
+    plans: unwrap(plans) ?? [],
+  };
+}
+
+export async function getAdminUsers() {
+  return unwrap(await getDb().from("users").select("id, openId, name, email, role, totalInvested, totalEarnings, createdAt, lastSignedIn").order("createdAt", { ascending: false }));
+}
+
+export async function getAdminInvestments() {
+  return unwrap(await getDb().from("user_investments").select("*, users(name, email), investment_plans(name), investment_categories(name)").order("createdAt", { ascending: false }));
+}
+
+export async function updateInvestmentStatus(id: number, status: "pending" | "active" | "completed" | "withdrawn") {
+  const values = status === "active" ? { status, startDate: new Date().toISOString() } : { status };
+  return unwrap(await getDb().from("user_investments").update(values).eq("id", id).select().single());
+}
+
+export async function getAdminLogs() {
+  return unwrap(await getDb().from("admin_logs").select("*, users(name, email)").order("createdAt", { ascending: false }).limit(100));
+}
+
+export async function createAdminLog(log: { adminId: number; action: string; targetUserId?: number; targetInvestmentId?: number; details?: string }) {
+  return unwrap(await getDb().from("admin_logs").insert(log).select().single());
 }
