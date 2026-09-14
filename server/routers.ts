@@ -38,16 +38,14 @@ export const appRouter = router({
         planId: z.number(),
         categoryId: z.number(),
         amount: z.string(),
-        expectedReturn: z.string(),
-      }))
+            }))
       .mutation(({ ctx, input }) => {
         return db.createUserInvestment({
           userId: ctx.user.id,
           planId: input.planId,
           categoryId: input.categoryId,
           amount: input.amount as any,
-          expectedReturn: input.expectedReturn as any,
-          status: "pending",
+                status: "pending",
         });
       }),
   }),
