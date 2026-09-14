@@ -79,9 +79,13 @@ create table if not exists public.admin_logs (
   "createdAt" timestamptz not null default now()
 );
 
+create unique index if not exists investment_plans_name_uidx on public.investment_plans (name);
+create unique index if not exists investment_categories_name_uidx on public.investment_categories (name);
 create index if not exists user_investments_user_id_idx on public.user_investments ("userId");
+create index if not exists user_investments_status_idx on public.user_investments (status);
 create index if not exists withdrawal_requests_user_id_idx on public.withdrawal_requests ("userId");
 create index if not exists withdrawal_requests_status_idx on public.withdrawal_requests (status);
+create index if not exists admin_logs_created_at_idx on public.admin_logs ("createdAt" desc);
 
 alter table public.users enable row level security;
 alter table public.investment_plans enable row level security;
